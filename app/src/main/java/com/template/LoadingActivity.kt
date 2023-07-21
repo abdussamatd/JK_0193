@@ -176,7 +176,6 @@ class LoadingActivity : AppCompatActivity() {
 
     private fun openWebActivity() {
         val url = getFinalUrl()
-        println("opening: $url")
         val intent = Intent(this, WebActivity::class.java)
         intent.putExtra(WebActivity.URL, url)
         startActivity(intent)

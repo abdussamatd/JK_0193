@@ -66,8 +66,6 @@ class WebActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack()
-        } else {
-            finish()
         }
     }
 
