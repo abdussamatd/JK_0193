@@ -12,19 +12,23 @@ import androidx.appcompat.app.AppCompatActivity
 class WebActivity : AppCompatActivity() {
 
     companion object {
-        const val EXTRA_URL = "extra_url"
+        const val URL = "url"
+        private const val KEY_CURRENT_URL = "currentUrl"
+        private const val KEY_COOKIES = "WebActivityCookies"
+        private const val COOKIES = "cookies"
     }
 
     private lateinit var webView: WebView
+    private var currentUrl: String? = null
 
-    @SuppressLint("SetJavaScriptEnabled", "MissingInflatedId")
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_web)
 
         webView = findViewById(R.id.web_view)
 
-        val url = intent.getStringExtra(EXTRA_URL)
+        val url = intent.getStringExtra(URL)
 
         val webSettings = webView.settings
         webSettings.javaScriptEnabled = true
@@ -34,40 +38,68 @@ class WebActivity : AppCompatActivity() {
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                // Открываем все ссылки внутри WebView
-                return false
+                return if (request.isForMainFrame) {
+                    false
+                } else {
+                    view.loadUrl(request.url.toString())
+                    true
+                }
+            }
+
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
             }
         }
 
-        // Сохраняем куки
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        cookieManager.acceptThirdPartyCookies(webView)
-
-        // Загружаем URL в WebView
-        if (url != null) {
-            webView.loadUrl(url)
+        if (savedInstanceState != null) {
+            currentUrl = savedInstanceState.getString(KEY_CURRENT_URL)
+            webView.restoreState(savedInstanceState)
+        } else {
+            if (url != null) {
+                currentUrl = url
+                webView.loadUrl(url)
+            }
         }
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Переопределяем обработку кнопки "назад", чтобы не закрывать приложение, если некуда возвращаться в WebView
         if (webView.canGoBack()) {
             webView.goBack()
         } else {
-            super.onBackPressed()
+            finish()
         }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        // Сохраняем состояние WebView при изменении ориентации
+        outState.putString(KEY_CURRENT_URL, currentUrl)
         webView.saveState(outState)
     }
 
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
-        // Восстанавливаем состояние WebView после изменения ориентации
-        webView.restoreState(savedInstanceState)
+        currentUrl = savedInstanceState.getString(KEY_CURRENT_URL)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val cookieManager = CookieManager.getInstance()
+        val cookies = cookieManager.getCookie(webView.url)
+        val sharedPreferences = getSharedPreferences(KEY_COOKIES, MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putString(COOKIES, cookies)
+        editor.apply()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val sharedPreferences = getSharedPreferences(KEY_COOKIES, MODE_PRIVATE)
+        val cookies = sharedPreferences.getString(COOKIES, null)
+        if (cookies != null) {
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setCookie(webView.url, cookies)
+            cookieManager.flush()
+        }
     }
 }

